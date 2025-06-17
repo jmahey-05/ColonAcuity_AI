@@ -30,7 +30,7 @@ model = None
 last_conv_layer = None
 
 # Model configuration
-MODEL_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE"  # Replace with your actual file ID
+MODEL_FILE_ID = "https://drive.google.com/file/d/1GhBRt-ZuvH6zjKzWQ1oX2jGrr-9GnqA-/view?usp=sharing"  # Replace with your actual file ID
 MODEL_LOCAL_PATH = "best_model.keras"
 
 def download_model_from_gdrive(file_id, destination):
