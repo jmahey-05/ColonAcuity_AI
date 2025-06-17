@@ -12,6 +12,7 @@ import cv2
 import matplotlib.pyplot as plt
 import base64
 
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
