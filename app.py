@@ -11,7 +11,8 @@ import logging
 import cv2
 import matplotlib.pyplot as plt
 import base64
-
+import requests
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,96 @@ app = FastAPI(
 # Global model variable
 model = None
 last_conv_layer = None
+
+# Model configuration
+MODEL_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE"  # Replace with your actual file ID
+MODEL_LOCAL_PATH = "best_model.keras"
+
+def download_model_from_gdrive(file_id, destination):
+    """
+    Download model from Google Drive using the file ID
+    
+    Parameters:
+    -----------
+    file_id : str
+        Google Drive file ID
+    destination : str
+        Local path where the model should be saved
+    
+    Returns:
+    --------
+    bool
+        True if download successful, False otherwise
+    """
+    try:
+        logger.info(f"Downloading model from Google Drive (ID: {file_id})")
+        
+        # Google Drive direct download URL
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+        # First request to get the download confirmation
+        session = requests.Session()
+        response = session.get(url, stream=True)
+        
+        # Handle the download confirmation for large files
+        if "download_warning" in response.text or "virus scan warning" in response.text:
+            # Extract the confirmation token
+            for key, value in response.cookies.items():
+                if key.startswith('download_warning'):
+                    token = value
+                    break
+            else:
+                # Try to find token in the response text
+                import re
+                token_match = re.search(r'confirm=([a-zA-Z0-9_-]+)', response.text)
+                if token_match:
+                    token = token_match.group(1)
+                else:
+                    logger.error("Could not find confirmation token")
+                    return False
+            
+            # Make the actual download request with confirmation
+            url = f"https://drive.google.com/uc?export=download&confirm={token}&id={file_id}"
+            response = session.get(url, stream=True)
+        
+        # Check if the response is successful
+        if response.status_code == 200:
+            # Save the file
+            with open(destination, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logger.info(f"Model downloaded successfully to {destination}")
+            return True
+        else:
+            logger.error(f"Failed to download model. Status code: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error downloading model: {str(e)}")
+        return False
+
+def ensure_model_exists():
+    """
+    Ensure the model file exists locally. Download from Google Drive if not found.
+    
+    Returns:
+    --------
+    bool
+        True if model file exists or was downloaded successfully
+    """
+    if os.path.exists(MODEL_LOCAL_PATH):
+        logger.info(f"Model file found locally at {MODEL_LOCAL_PATH}")
+        return True
+    
+    logger.info("Model file not found locally. Attempting to download from Google Drive...")
+    
+    if MODEL_FILE_ID == "YOUR_GOOGLE_DRIVE_FILE_ID_HERE":
+        logger.error("Google Drive file ID not configured. Please set MODEL_FILE_ID.")
+        return False
+    
+    return download_model_from_gdrive(MODEL_FILE_ID, MODEL_LOCAL_PATH)
 
 def normalize_for_network(image):
     """
@@ -248,10 +339,6 @@ def generate_gradcam_visualization(img_array, orig_img_array, model, layer_name,
     ax2.set_title("Grad-CAM Visualization", fontsize=14)
     ax2.axis('off')
     
-    # # Add prediction info as suptitle
-    # fig.suptitle(f"Prediction: {class_label} (Probability: {probability:.2%})",
-    #              fontsize=16)
-    
     # Add a colored border based on the prediction
     color = 'red' if class_label == 'Adenocarcinoma' else 'green'
     for ax in [ax1, ax2]:
@@ -280,9 +367,13 @@ async def load_model():
     """Load the model on startup and find the last conv layer."""
     global model, last_conv_layer
     try:
-        model_path = "best_model.keras"
-        logger.info(f"Loading model from {model_path}")
-        model = tf.keras.models.load_model(model_path)
+        # Ensure model file exists (download if necessary)
+        if not ensure_model_exists():
+            logger.error("Failed to ensure model file exists")
+            return
+        
+        logger.info(f"Loading model from {MODEL_LOCAL_PATH}")
+        model = tf.keras.models.load_model(MODEL_LOCAL_PATH)
         
         # Find the last convolutional layer in the model
         for layer in reversed(model.layers):
