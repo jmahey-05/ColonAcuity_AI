@@ -5,3 +5,4 @@ pillow==10.2.0
 tensorflow==2.18.1
 numpy==1.26.3
 pydantic==2.6.0
+requests>=2.25.1
